@@ -113,7 +113,7 @@ class ExternalAcademicSearchService:
                 query_sources.extend(self._search_europe_pmc(query))
             if "crossref" in providers:
                 query_sources.extend(self._search_crossref(query))
-            if "openalex" in providers:
+            if "openalex" in providers and settings.OPENALEX_API_KEY:
                 query_sources.extend(self._search_openalex(query))
 
             for source in query_sources:

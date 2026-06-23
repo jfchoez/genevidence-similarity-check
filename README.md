@@ -137,7 +137,7 @@ La capa externa consulta APIs academicas abiertas antes de cerrar el reporte:
 
 - Europe PMC Articles REST API para literatura biomedica y de ciencias de la vida.
 - Crossref REST API para metadatos bibliograficos y abstracts disponibles.
-- OpenAlex Works API para obras academicas con abstract cuando la API responda; se puede configurar `OPENALEX_API_KEY` si la cuenta de OpenAlex lo requiere.
+- OpenAlex Works API para obras academicas con abstract cuando `OPENALEX_API_KEY` este configurada.
 
 El flujo externo es:
 
