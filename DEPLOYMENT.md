@@ -85,6 +85,17 @@ Configurar estas variables en el proyecto Vercel del backend:
 | `BACKEND_CORS_ORIGINS` | `https://similaritycheck.genevidence.com` |
 | `AUTO_CREATE_TABLES` | `true` para el primer despliegue; `false` cuando se gestione con Alembic |
 | `SEMANTIC_ENABLED` | `false` inicialmente; requiere imagen con sentence-transformers |
+| `EXTERNAL_ACADEMIC_SEARCH_ENABLED` | `true` para consultar fuentes academicas abiertas al generar reportes |
+| `EXTERNAL_ACADEMIC_PROVIDERS` | `europepmc,crossref,openalex` |
+| `EXTERNAL_ACADEMIC_MAX_QUERIES` | Numero maximo de consultas externas por reporte, por defecto `6` |
+| `EXTERNAL_ACADEMIC_RESULTS_PER_QUERY` | Resultados por proveedor y consulta, por defecto `4` |
+| `EXTERNAL_ACADEMIC_MAX_SOURCES` | Fuentes externas maximas que se evaluan por reporte, por defecto `14` |
+| `EXTERNAL_ACADEMIC_MAX_MATCHES` | Coincidencias externas maximas guardadas por reporte, por defecto `30` |
+| `EXTERNAL_ACADEMIC_MIN_SCORE` | Umbral minimo para coincidencias externas sin clasificacion literal, por defecto `78` |
+| `EXTERNAL_ACADEMIC_MIN_QUERY_WORDS` | Longitud minima de chunk para busqueda externa, por defecto `35` |
+| `EXTERNAL_ACADEMIC_TIMEOUT_SECONDS` | Timeout por llamada externa, por defecto `8` |
+| `EXTERNAL_ACADEMIC_USER_AGENT` | Identificador HTTP, por ejemplo `GenevidenceSimilarityCheck/0.1` |
+| `OPENALEX_API_KEY` | Opcional si OpenAlex solicita autenticacion/API key |
 
 Para despliegues con Alembic gestionado manualmente:
 

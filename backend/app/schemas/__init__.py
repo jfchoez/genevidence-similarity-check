@@ -53,10 +53,17 @@ class DocumentDetail(DocumentOut):
 
 class ReportMatchOut(BaseModel):
     id: int
-    source_document_id: int
+    source_kind: str = "internal"
+    source_document_id: int | None = None
     source_document_label: str
     target_chunk_id: int
-    source_chunk_id: int
+    source_chunk_id: int | None = None
+    external_source_id: str | None = None
+    external_source_provider: str | None = None
+    external_source_title: str | None = None
+    external_source_url: str | None = None
+    external_source_doi: str | None = None
+    external_source_year: int | None = None
     similarity_score: float
     jaccard_score: float
     fuzzy_score: float
@@ -76,8 +83,12 @@ class ReportMatchOut(BaseModel):
 
 
 class SourceSummaryOut(BaseModel):
-    source_document_id: int
+    source_kind: str = "internal"
+    source_document_id: int | None = None
     source_document_label: str
+    external_source_id: str | None = None
+    external_source_provider: str | None = None
+    external_source_url: str | None = None
     match_count: int
     max_score: float
     matched_sections: list[str]

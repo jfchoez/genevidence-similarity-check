@@ -154,6 +154,11 @@ export default function ReportPage() {
                   <span className="rounded-md bg-slate-100 px-2 py-1 font-medium">{match.match_type}</span>
                   <span className="rounded-md bg-slate-100 px-2 py-1">{match.target_section}</span>
                   <span className="rounded-md bg-slate-100 px-2 py-1">{match.source_document_label}</span>
+                  {match.source_kind === "external_academic" && match.external_source_provider ? (
+                    <span className="rounded-md border border-teal/20 bg-teal/10 px-2 py-1 text-teal">
+                      {match.external_source_provider}
+                    </span>
+                  ) : null}
                   <span className="font-semibold">{match.similarity_score.toFixed(2)}</span>
                   {match.is_common_method_phrase ? (
                     <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800">
@@ -167,7 +172,19 @@ export default function ReportPage() {
                     <p className="text-sm leading-6 text-slate-700">{match.target_text}</p>
                   </div>
                   <div>
-                    <h3 className="mb-1 text-sm font-semibold">Fuente coincidente</h3>
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold">Fuente coincidente</h3>
+                      {match.external_source_url ? (
+                        <a
+                          className="text-xs font-medium text-teal"
+                          href={match.external_source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Abrir fuente
+                        </a>
+                      ) : null}
+                    </div>
                     <p className="text-sm leading-6 text-slate-700">{match.source_text}</p>
                   </div>
                 </div>
@@ -182,11 +199,19 @@ export default function ReportPage() {
             <h2 className="mb-3 text-base font-semibold">Fuentes principales</h2>
             <div className="space-y-3">
               {report.source_summary.map((sourceItem) => (
-                <div key={sourceItem.source_document_id} className="border-b border-line pb-3 text-sm last:border-b-0">
+                <div
+                  key={`${sourceItem.source_kind}-${sourceItem.source_document_id ?? sourceItem.external_source_id}`}
+                  className="border-b border-line pb-3 text-sm last:border-b-0"
+                >
                   <div className="font-medium">{sourceItem.source_document_label}</div>
                   <div className="text-slate-600">
                     {sourceItem.match_count} coincidencias / {sourceItem.max_score.toFixed(2)}
                   </div>
+                  {sourceItem.external_source_url ? (
+                    <a className="mt-1 block text-xs text-teal" href={sourceItem.external_source_url} target="_blank" rel="noreferrer">
+                      Abrir fuente
+                    </a>
+                  ) : null}
                 </div>
               ))}
             </div>

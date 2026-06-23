@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     SEMANTIC_MIN_WORDS: int = 60
     SEMANTIC_MAX_CANDIDATES: int = 20
 
+    EXTERNAL_ACADEMIC_SEARCH_ENABLED: bool = True
+    EXTERNAL_ACADEMIC_PROVIDERS: str | List[str] = "europepmc,crossref,openalex"
+    EXTERNAL_ACADEMIC_MAX_QUERIES: int = 6
+    EXTERNAL_ACADEMIC_RESULTS_PER_QUERY: int = 4
+    EXTERNAL_ACADEMIC_MAX_SOURCES: int = 14
+    EXTERNAL_ACADEMIC_MAX_MATCHES: int = 30
+    EXTERNAL_ACADEMIC_MIN_SCORE: float = 78.0
+    EXTERNAL_ACADEMIC_MIN_QUERY_WORDS: int = 35
+    EXTERNAL_ACADEMIC_TIMEOUT_SECONDS: float = 8.0
+    EXTERNAL_ACADEMIC_USER_AGENT: str = "GenevidenceSimilarityCheck/0.1"
+    OPENALEX_API_KEY: str | None = None
+
     FREE_PLAN_CREDITS: int = 3
 
     @field_validator("DATABASE_URL")
@@ -55,6 +67,13 @@ class Settings(BaseSettings):
         if isinstance(value, list):
             return value
         return [item.strip() for item in value.split(",") if item.strip()]
+
+    @field_validator("EXTERNAL_ACADEMIC_PROVIDERS")
+    @classmethod
+    def parse_external_providers(cls, value: str | List[str]) -> List[str]:
+        if isinstance(value, list):
+            return [item.strip().lower() for item in value if item.strip()]
+        return [item.strip().lower() for item in value.split(",") if item.strip()]
 
 
 @lru_cache

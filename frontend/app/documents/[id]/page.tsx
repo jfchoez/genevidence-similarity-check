@@ -13,6 +13,7 @@ export default function DocumentPage() {
   const params = useParams<{ id: string }>();
   const [document, setDocument] = useState<DocumentDetail | null>(null);
   const [excludeReferences, setExcludeReferences] = useState(true);
+  const [includeExternalSources, setIncludeExternalSources] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -26,9 +27,11 @@ export default function DocumentPage() {
     setBusy(true);
     setError("");
     try {
-      const report = await apiFetch<Report>(`/reports/${params.id}/generate?exclude_references=${excludeReferences}`, {
-        method: "POST"
+      const query = new URLSearchParams({
+        exclude_references: String(excludeReferences),
+        include_external_sources: String(includeExternalSources)
       });
+      const report = await apiFetch<Report>(`/reports/${params.id}/generate?${query.toString()}`, { method: "POST" });
       router.push(`/reports/${report.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo generar el reporte");
@@ -88,6 +91,18 @@ export default function DocumentPage() {
               onChange={(event) => setExcludeReferences(event.target.checked)}
             />
             Excluir referencias
+          </label>
+          <label className="mt-3 flex items-start gap-2 text-sm">
+            <input
+              className="mt-1"
+              type="checkbox"
+              checked={includeExternalSources}
+              onChange={(event) => setIncludeExternalSources(event.target.checked)}
+            />
+            <span>
+              Buscar fuentes academicas abiertas
+              <span className="block text-xs text-slate-500">Puede tardar un poco mas.</span>
+            </span>
           </label>
           <button
             className="focus-ring mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md bg-teal px-4 py-2 text-sm font-medium text-white disabled:bg-slate-400"

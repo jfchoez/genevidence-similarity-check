@@ -16,3 +16,8 @@ SEMANTIC_WARNING = (
     "Las posibles parafrasis semanticas son senales de revision, no evidencia concluyente "
     "de mala practica academica."
 )
+
+EXTERNAL_ACADEMIC_WARNING = (
+    "La busqueda externa academica consulta fuentes abiertas y metadatos disponibles publicamente. "
+    "No equivale a una cobertura completa de internet ni a una determinacion automatica de plagio."
+)

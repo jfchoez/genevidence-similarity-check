@@ -48,10 +48,17 @@ export type Credits = {
 
 export type ReportMatch = {
   id: number;
-  source_document_id: number;
+  source_kind: string;
+  source_document_id?: number | null;
   source_document_label: string;
   target_chunk_id: number;
-  source_chunk_id: number;
+  source_chunk_id?: number | null;
+  external_source_id?: string | null;
+  external_source_provider?: string | null;
+  external_source_title?: string | null;
+  external_source_url?: string | null;
+  external_source_doi?: string | null;
+  external_source_year?: number | null;
   similarity_score: number;
   jaccard_score: number;
   fuzzy_score: number;
@@ -77,8 +84,12 @@ export type Report = {
   similarity_excluding_references_score: number;
   section_similarity: Record<string, number>;
   source_summary: {
-    source_document_id: number;
+    source_kind: string;
+    source_document_id?: number | null;
     source_document_label: string;
+    external_source_id?: string | null;
+    external_source_provider?: string | null;
+    external_source_url?: string | null;
     match_count: number;
     max_score: number;
     matched_sections: string[];

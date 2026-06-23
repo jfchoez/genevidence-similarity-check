@@ -17,10 +17,16 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 def generate_report(
     document_id: int,
     exclude_references: bool = Query(False),
+    include_external_sources: bool = Query(True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ReportOut:
-    report = ReportGenerator(db).generate(document_id, current_user, exclude_references=exclude_references)
+    report = ReportGenerator(db).generate(
+        document_id,
+        current_user,
+        exclude_references=exclude_references,
+        include_external_sources=include_external_sources,
+    )
     return build_report_response(db, report, current_user)
 
 

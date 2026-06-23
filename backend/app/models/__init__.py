@@ -68,6 +68,11 @@ class MatchType(str, Enum):
     possible_paraphrase = "possible_paraphrase"
 
 
+class SourceKind(str, Enum):
+    internal = "internal"
+    external_academic = "external_academic"
+
+
 class SubscriptionStatus(str, Enum):
     active = "active"
     canceled = "canceled"
@@ -242,9 +247,16 @@ class SimilarityMatch(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     report_id = Column(Integer, ForeignKey("similarity_reports.id", ondelete="CASCADE"), nullable=False, index=True)
-    source_document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_kind = Column(String(64), default=SourceKind.internal.value, nullable=False, index=True)
+    source_document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=True, index=True)
     target_chunk_id = Column(Integer, ForeignKey("text_chunks.id", ondelete="CASCADE"), nullable=False, index=True)
-    source_chunk_id = Column(Integer, ForeignKey("text_chunks.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_chunk_id = Column(Integer, ForeignKey("text_chunks.id", ondelete="CASCADE"), nullable=True, index=True)
+    external_source_id = Column(String(255), nullable=True, index=True)
+    external_source_provider = Column(String(120), nullable=True, index=True)
+    external_source_title = Column(String(512), nullable=True)
+    external_source_url = Column(String(1024), nullable=True)
+    external_source_doi = Column(String(255), nullable=True)
+    external_source_year = Column(Integer, nullable=True)
     similarity_score = Column(Float, nullable=False)
     jaccard_score = Column(Float, default=0.0, nullable=False)
     fuzzy_score = Column(Float, default=0.0, nullable=False)

@@ -125,16 +125,19 @@ class PDFReportBuilder:
         story.append(
             Paragraph(
                 "El sistema combina fingerprints winnowing, similitud Jaccard y RapidFuzz para detectar "
-                "coincidencias literales o casi literales. La capa semantica experimental, cuando esta activa, "
-                "usa embeddings multilingues para senalar posibles parafrasis revisables.",
+                "coincidencias literales o casi literales contra documentos internos y fuentes academicas abiertas. "
+                "La capa semantica experimental, cuando esta activa, usa embeddings multilingues para senalar "
+                "posibles parafrasis revisables.",
                 styles["BodyText"],
             )
         )
         story.append(Paragraph("Limitaciones", styles["SectionTitle"]))
         story.append(
             Paragraph(
-                "El reporte compara contra la base interna disponible. No reemplaza la revision academica humana, "
-                "no declara plagio y sus porcentajes deben interpretarse como aproximaciones.",
+                "El reporte compara contra la base interna disponible y contra metadatos/abstracts publicos de "
+                "fuentes academicas abiertas. No equivale a una cobertura completa de internet, no reemplaza la "
+                "revision academica humana, no declara plagio y sus porcentajes deben interpretarse como "
+                "aproximaciones.",
                 styles["BodyText"],
             )
         )

@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 from rapidfuzz import fuzz
 from sqlalchemy.orm import Session
 
-from app.core.common_phrases import ACADEMIC_REVIEW_WARNING, SEMANTIC_WARNING
+from app.core.common_phrases import ACADEMIC_REVIEW_WARNING, EXTERNAL_ACADEMIC_WARNING, SEMANTIC_WARNING
 from app.core.config import settings
 from app.models import (
     Document,
@@ -16,12 +16,14 @@ from app.models import (
     ReportStatus,
     SimilarityMatch,
     SimilarityReport,
+    SourceKind,
     TextChunk,
     User,
 )
 from app.schemas import ReportMatchOut, ReportOut, SourceSummaryOut
 from app.services.billing import deduct_report_credit, get_credit_balance
 from app.services.embeddings import SemanticSimilarityService, should_mark_possible_paraphrase
+from app.services.external_academic import ExternalAcademicSearchService, ExternalAcademicSource
 from app.services.similarity import SimilarityEngine
 from app.services.text_processing import find_common_method_phrases
 
@@ -55,17 +57,56 @@ def privacy_trim_source_text(user: User, source_document: Document, text_value: 
     return text_value[:360] + ("..." if len(text_value) > 360 else "")
 
 
+def external_source_label(match: SimilarityMatch) -> str:
+    title = (match.external_source_title or "").strip()
+    provider = (match.external_source_provider or "Fuente academica abierta").strip()
+    if title:
+        year = f" ({match.external_source_year})" if match.external_source_year else ""
+        return f"{title}{year} - {provider}"
+    if match.external_source_url:
+        return f"{provider}: {match.external_source_url}"
+    return provider
+
+
+def source_label_for_match(user: User, match: SimilarityMatch) -> str:
+    if (match.source_kind or SourceKind.internal.value) == SourceKind.external_academic.value:
+        return external_source_label(match)
+    if match.source_document:
+        return source_label_for_user(user, match.source_document)
+    return "Fuente interna no disponible"
+
+
+def source_text_for_match(user: User, match: SimilarityMatch) -> str:
+    if (match.source_kind or SourceKind.internal.value) == SourceKind.external_academic.value:
+        return match.source_text
+    if match.source_document:
+        return privacy_trim_source_text(user, match.source_document, match.source_text)
+    return match.source_text
+
+
+def _source_filter_text(user: User, match: SimilarityMatch) -> str:
+    return " ".join(
+        [
+            source_label_for_match(user, match),
+            match.external_source_provider or "",
+            match.external_source_url or "",
+        ]
+    ).lower()
+
+
 class ReportGenerator:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.engine = SimilarityEngine()
         self.semantic = SemanticSimilarityService()
+        self.external_academic = ExternalAcademicSearchService()
 
     def generate(
         self,
         document_id: int,
         user: User,
         exclude_references: bool = False,
+        include_external_sources: bool | None = None,
     ) -> SimilarityReport:
         document = assert_document_access(user, self.db.get(Document, document_id))
         if document.status != DocumentStatus.indexed.value:
@@ -79,19 +120,28 @@ class ReportGenerator:
                 detail="No tienes creditos disponibles para generar reportes.",
             )
 
+        external_enabled = (
+            settings.EXTERNAL_ACADEMIC_SEARCH_ENABLED
+            if include_external_sources is None
+            else include_external_sources and settings.EXTERNAL_ACADEMIC_SEARCH_ENABLED
+        )
+        warnings = [ACADEMIC_REVIEW_WARNING, SEMANTIC_WARNING]
+        if external_enabled:
+            warnings.append(EXTERNAL_ACADEMIC_WARNING)
+
         report = SimilarityReport(
             document_id=document.id,
             owner_id=user.id,
             status=ReportStatus.processing.value,
             exclude_references=exclude_references,
-            warnings=[ACADEMIC_REVIEW_WARNING, SEMANTIC_WARNING],
+            warnings=warnings,
         )
         self.db.add(report)
         self.db.commit()
         self.db.refresh(report)
 
         try:
-            matches = self._build_matches(report, document, exclude_references)
+            matches = self._build_matches(report, document, exclude_references, external_enabled)
             for match in matches:
                 self.db.add(match)
 
@@ -155,6 +205,7 @@ class ReportGenerator:
         report: SimilarityReport,
         document: Document,
         exclude_references: bool,
+        include_external_sources: bool,
     ) -> list[SimilarityMatch]:
         target_chunks = (
             self.db.query(TextChunk)
@@ -200,10 +251,81 @@ class ReportGenerator:
                     )
                 )
 
+        if include_external_sources:
+            matches.extend(self._external_academic_matches(report.id, target_chunks))
+
         if settings.SEMANTIC_ENABLED:
             matches.extend(self._semantic_matches(report.id, document.id, target_chunks, seen_pairs))
 
         return matches
+
+    def _external_academic_matches(
+        self,
+        report_id: int,
+        target_chunks: list[TextChunk],
+    ) -> list[SimilarityMatch]:
+        sources = self.external_academic.search_for_chunks(target_chunks)
+        if not sources:
+            return []
+
+        matches: list[SimilarityMatch] = []
+        seen_pairs: set[tuple[int, str]] = set()
+        scored_matches: list[SimilarityMatch] = []
+
+        for source in sources:
+            source_chunk = self.external_academic.source_as_chunk(source)
+            if not source_chunk.fingerprint_hashes:
+                continue
+            source_hashes = set(source_chunk.fingerprint_hashes)
+            for target_chunk in target_chunks:
+                if target_chunk.word_count < settings.EXTERNAL_ACADEMIC_MIN_QUERY_WORDS:
+                    continue
+                pair = (target_chunk.id, source.source_id)
+                if pair in seen_pairs:
+                    continue
+                shared_count = len(set(target_chunk.fingerprint_hashes or []) & source_hashes)
+                score = self.engine.score_pair(target_chunk, source_chunk, shared_count)  # type: ignore[arg-type]
+                if not self._is_external_score_relevant(score.match_type, score.similarity_score, shared_count):
+                    continue
+                seen_pairs.add(pair)
+                scored_matches.append(
+                    self._external_match_from_score(
+                        report_id=report_id,
+                        target_chunk=target_chunk,
+                        source=source,
+                        match_type=score.match_type or MatchType.partial.value,
+                        similarity_score=score.similarity_score,
+                        jaccard_score=score.jaccard_score,
+                        fuzzy_score=score.fuzzy_score,
+                        shared_fingerprint_count=score.shared_fingerprint_count,
+                        common_phrase_labels=score.common_phrase_labels,
+                    )
+                )
+
+        for match in sorted(scored_matches, key=lambda item: item.similarity_score, reverse=True):
+            source_key = match.external_source_id or ""
+            duplicate_target_source = any(
+                existing.target_chunk_id == match.target_chunk_id
+                and (existing.external_source_id or "") == source_key
+                for existing in matches
+            )
+            if duplicate_target_source:
+                continue
+            matches.append(match)
+            if len(matches) >= settings.EXTERNAL_ACADEMIC_MAX_MATCHES:
+                break
+
+        return matches
+
+    @staticmethod
+    def _is_external_score_relevant(
+        match_type: str | None,
+        similarity_score: float,
+        shared_fingerprint_count: int,
+    ) -> bool:
+        if match_type is not None:
+            return True
+        return similarity_score >= settings.EXTERNAL_ACADEMIC_MIN_SCORE and shared_fingerprint_count >= 2
 
     def _semantic_matches(
         self,
@@ -233,6 +355,7 @@ class ReportGenerator:
                 matches.append(
                     SimilarityMatch(
                         report_id=report_id,
+                        source_kind=SourceKind.internal.value,
                         source_document_id=source_chunk.document_id,
                         target_chunk_id=target_chunk.id,
                         source_chunk_id=source_chunk.id,
@@ -271,6 +394,7 @@ class ReportGenerator:
     ) -> SimilarityMatch:
         return SimilarityMatch(
             report_id=report_id,
+            source_kind=SourceKind.internal.value,
             source_document_id=source_chunk.document_id,
             target_chunk_id=target_chunk.id,
             source_chunk_id=source_chunk.id,
@@ -289,6 +413,50 @@ class ReportGenerator:
             target_end_position=target_chunk.end_position,
             source_start_position=source_chunk.start_position,
             source_end_position=source_chunk.end_position,
+        )
+
+    def _external_match_from_score(
+        self,
+        report_id: int,
+        target_chunk: TextChunk,
+        source: ExternalAcademicSource,
+        match_type: str,
+        similarity_score: float,
+        jaccard_score: float,
+        fuzzy_score: float,
+        shared_fingerprint_count: int,
+        common_phrase_labels: list[str],
+    ) -> SimilarityMatch:
+        source_text = " ".join(source.text.split())
+        if len(source_text) > 1600:
+            source_text = source_text[:1600].rstrip() + "..."
+        return SimilarityMatch(
+            report_id=report_id,
+            source_kind=SourceKind.external_academic.value,
+            source_document_id=None,
+            target_chunk_id=target_chunk.id,
+            source_chunk_id=None,
+            external_source_id=source.source_id,
+            external_source_provider=source.provider,
+            external_source_title=source.title,
+            external_source_url=source.url,
+            external_source_doi=source.doi,
+            external_source_year=source.year,
+            similarity_score=similarity_score,
+            jaccard_score=jaccard_score,
+            fuzzy_score=fuzzy_score,
+            shared_fingerprint_count=shared_fingerprint_count,
+            match_type=match_type,
+            target_section=self._section_name(target_chunk),
+            source_section="fuente academica externa",
+            is_common_method_phrase=bool(common_phrase_labels),
+            common_phrase_labels=common_phrase_labels,
+            target_text=target_chunk.text,
+            source_text=source_text,
+            target_start_position=target_chunk.start_position,
+            target_end_position=target_chunk.end_position,
+            source_start_position=0,
+            source_end_position=len(source_text),
         )
 
     @staticmethod
@@ -330,12 +498,23 @@ class ReportGenerator:
 
     @staticmethod
     def _source_summary(matches: list[SimilarityMatch]) -> list[dict]:
-        summary: dict[int, dict] = {}
+        summary: dict[str, dict] = {}
         for match in matches:
+            source_kind = match.source_kind or SourceKind.internal.value
+            source_key = (
+                f"external:{match.external_source_id}"
+                if source_kind == SourceKind.external_academic.value
+                else f"internal:{match.source_document_id}"
+            )
             row = summary.setdefault(
-                match.source_document_id,
+                source_key,
                 {
+                    "source_kind": source_kind,
                     "source_document_id": match.source_document_id,
+                    "external_source_id": match.external_source_id,
+                    "external_source_provider": match.external_source_provider,
+                    "external_source_title": match.external_source_title,
+                    "external_source_url": match.external_source_url,
                     "match_count": 0,
                     "max_score": 0.0,
                     "matched_sections": set(),
@@ -347,12 +526,17 @@ class ReportGenerator:
 
         return [
             {
-                "source_document_id": source_id,
+                "source_kind": data["source_kind"],
+                "source_document_id": data["source_document_id"],
+                "external_source_id": data.get("external_source_id"),
+                "external_source_provider": data.get("external_source_provider"),
+                "external_source_title": data.get("external_source_title"),
+                "external_source_url": data.get("external_source_url"),
                 "match_count": data["match_count"],
                 "max_score": round(data["max_score"], 2),
                 "matched_sections": sorted(data["matched_sections"]),
             }
-            for source_id, data in sorted(summary.items(), key=lambda item: item[1]["max_score"], reverse=True)
+            for _, data in sorted(summary.items(), key=lambda item: item[1]["max_score"], reverse=True)
         ]
 
 
@@ -388,33 +572,60 @@ def build_report_response(
         matches = [
             match
             for match in matches
-            if source_lower in source_label_for_user(user, match.source_document).lower()
+            if source_lower in _source_filter_text(user, match)
         ]
 
     source_summary = []
     for item in report.source_summary or []:
-        source_document = db.get(Document, item["source_document_id"])
-        if not source_document:
-            continue
-        source_summary.append(
-            SourceSummaryOut(
-                source_document_id=source_document.id,
-                source_document_label=source_label_for_user(user, source_document),
-                match_count=item.get("match_count", 0),
-                max_score=item.get("max_score", 0.0),
-                matched_sections=item.get("matched_sections", []),
+        source_kind = item.get("source_kind", SourceKind.internal.value)
+        if source_kind == SourceKind.external_academic.value:
+            provider = item.get("external_source_provider") or "Fuente academica abierta"
+            title = item.get("external_source_title")
+            label = f"{title} - {provider}" if title else provider
+            source_summary.append(
+                SourceSummaryOut(
+                    source_kind=SourceKind.external_academic.value,
+                    source_document_id=None,
+                    source_document_label=label,
+                    external_source_id=item.get("external_source_id"),
+                    external_source_provider=provider,
+                    external_source_url=item.get("external_source_url"),
+                    match_count=item.get("match_count", 0),
+                    max_score=item.get("max_score", 0.0),
+                    matched_sections=item.get("matched_sections", []),
+                )
             )
-        )
+        else:
+            source_document = db.get(Document, item["source_document_id"])
+            if not source_document:
+                continue
+            source_summary.append(
+                SourceSummaryOut(
+                    source_kind=SourceKind.internal.value,
+                    source_document_id=source_document.id,
+                    source_document_label=source_label_for_user(user, source_document),
+                    match_count=item.get("match_count", 0),
+                    max_score=item.get("max_score", 0.0),
+                    matched_sections=item.get("matched_sections", []),
+                )
+            )
 
     match_payloads: list[ReportMatchOut] = []
     for match in matches:
         match_payloads.append(
             ReportMatchOut(
                 id=match.id,
+                source_kind=match.source_kind or SourceKind.internal.value,
                 source_document_id=match.source_document_id,
-                source_document_label=source_label_for_user(user, match.source_document),
+                source_document_label=source_label_for_match(user, match),
                 target_chunk_id=match.target_chunk_id,
                 source_chunk_id=match.source_chunk_id,
+                external_source_id=match.external_source_id,
+                external_source_provider=match.external_source_provider,
+                external_source_title=match.external_source_title,
+                external_source_url=match.external_source_url,
+                external_source_doi=match.external_source_doi,
+                external_source_year=match.external_source_year,
                 similarity_score=match.similarity_score,
                 jaccard_score=match.jaccard_score,
                 fuzzy_score=match.fuzzy_score,
@@ -426,7 +637,7 @@ def build_report_response(
                 is_common_method_phrase=match.is_common_method_phrase,
                 common_phrase_labels=match.common_phrase_labels or [],
                 target_text=match.target_text,
-                source_text=privacy_trim_source_text(user, match.source_document, match.source_text),
+                source_text=source_text_for_match(user, match),
                 target_start_position=match.target_start_position,
                 target_end_position=match.target_end_position,
                 source_start_position=match.source_start_position,

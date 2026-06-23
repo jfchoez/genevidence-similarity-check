@@ -9,6 +9,7 @@ Genevidence Similarity Check es una base SaaS multiusuario para revision academi
 - Extraccion, limpieza, deteccion de secciones y segmentacion en chunks.
 - Indexacion interna con fingerprints tipo winnowing por chunk.
 - Generacion de reportes contra documentos internos previamente indexados.
+- Busqueda externa academica en fuentes abiertas: Europe PMC, Crossref y OpenAlex.
 - Reporte web con filtros por fuente, seccion, tipo de coincidencia y score minimo.
 - Reporte PDF con portada, resumen ejecutivo, fuentes, secciones, detalle, metodologia y limitaciones.
 - Sistema SaaS inicial con planes, suscripciones y creditos.
@@ -95,7 +96,7 @@ El backend incluye `backend/index.py` para despliegue como segundo proyecto Fast
 - `POST /documents/upload`
 - `GET /documents`
 - `GET /documents/{document_id}`
-- `POST /reports/{document_id}/generate?exclude_references=true`
+- `POST /reports/{document_id}/generate?exclude_references=true&include_external_sources=true`
 - `GET /reports/{report_id}`
 - `GET /reports/{report_id}/pdf`
 - `GET /billing/credits`
@@ -129,6 +130,26 @@ Al generar un reporte:
    - `possible_paraphrase`: posible parafrasis semantica.
 5. Se calcula similitud global como palabras en chunks coincidentes sobre palabras totales.
 6. Se calcula similitud excluyendo referencias y similitud por seccion.
+
+## Busqueda academica externa
+
+La capa externa consulta APIs academicas abiertas antes de cerrar el reporte:
+
+- Europe PMC Articles REST API para literatura biomedica y de ciencias de la vida.
+- Crossref REST API para metadatos bibliograficos y abstracts disponibles.
+- OpenAlex Works API para obras academicas con abstract cuando la API responda; se puede configurar `OPENALEX_API_KEY` si la cuenta de OpenAlex lo requiere.
+
+El flujo externo es:
+
+1. Selecciona chunks suficientemente largos del documento analizado.
+2. Genera consultas representativas a partir de frases informativas.
+3. Recupera resultados limitados por proveedor.
+4. Normaliza titulo y abstract de cada fuente.
+5. Genera fingerprints del texto recuperado.
+6. Calcula Jaccard + RapidFuzz contra chunks del documento.
+7. Guarda las coincidencias como `source_kind=external_academic`, diferenciadas de documentos internos.
+
+Esta capa no hace scraping masivo ni copia textos completos protegidos. Trabaja con metadatos/abstracts disponibles publicamente y por eso debe interpretarse como cobertura academica abierta, no como una base privada equivalente a Turnitin.
 
 ## Frases metodologicas comunes
 
@@ -198,9 +219,9 @@ Las pruebas cubren limpieza, segmentacion, secciones, fingerprints winnowing, Ja
 
 ## Limitaciones actuales
 
-- Solo compara contra documentos internos.
-- No compara contra toda la web.
-- No consulta PubMed, SciELO ni repositorios externos.
+- Compara contra documentos internos y fuentes academicas abiertas, pero no contra toda la web.
+- La cobertura externa depende de Europe PMC, Crossref y OpenAlex, y principalmente de metadatos/abstracts publicos.
+- No incluye todavia SciELO, repositorios institucionales, tesis publicas ni crawling web controlado.
 - No reemplaza revision academica humana.
 - El porcentaje de similitud es aproximado.
 - La deteccion semantica avanzada es experimental y esta desactivada por defecto.
