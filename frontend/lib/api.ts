@@ -9,6 +9,13 @@ export function apiUrl(path: string): string {
   return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+export function apiConnectionErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.includes("NEXT_PUBLIC_API_BASE_URL")) {
+    return "La URL de la API no esta configurada. Revisa NEXT_PUBLIC_API_BASE_URL en Vercel.";
+  }
+  return "No se pudo conectar con la API. Verifica que el backend este desplegado y que NEXT_PUBLIC_API_BASE_URL apunte a una URL HTTPS activa.";
+}
+
 export type User = {
   id: number;
   email: string;

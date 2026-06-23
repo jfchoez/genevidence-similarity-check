@@ -5,16 +5,15 @@
 El repositorio es un monorepo:
 
 - `frontend/`: Next.js 16.2.9 con App Router. Este servicio se despliega en Vercel.
-- `backend/`: FastAPI, PostgreSQL con pgvector, Redis y almacenamiento de documentos. Este servicio no debe desplegarse como una funcion Vercel porque requiere procesos y almacenamiento persistentes.
+- `backend/`: FastAPI, PostgreSQL con pgvector y almacenamiento de documentos. Puede desplegarse como un segundo proyecto en Vercel para habilitar autenticacion y API, aunque el procesamiento documental completo requiere storage persistente en una fase posterior.
 
 La arquitectura recomendada es:
 
 ```text
 similaritycheck.genevidence.com -> Vercel / Next.js
-api-similaritycheck.genevidence.com -> Backend Docker persistente
-                                      -> PostgreSQL + pgvector
-                                      -> Redis
-                                      -> volumen u object storage
+api-similaritycheck.genevidence.com -> Vercel / FastAPI
+                                      -> PostgreSQL + pgvector externo
+                                      -> storage persistente u object storage para documentos
 ```
 
 El frontend no quedara funcional para login, documentos y reportes hasta que `NEXT_PUBLIC_API_BASE_URL` apunte a un backend HTTPS desplegado.
@@ -36,9 +35,26 @@ No subir archivos `.env`, contrasenas, tokens, documentos de usuarios ni directo
 7. No configurar manualmente Output Directory. Vercel usa `.next` mediante su integracion de Next.js.
 8. El proyecto usa el runtime Node.js estandar de Vercel. `package.json` requiere Node.js 20.9 o superior.
 
-No se necesita `vercel.json` para esta arquitectura.
+No se necesita `vercel.json` para el frontend.
 
-## 3. Variables de entorno en Vercel
+## 3. Desplegar el backend en Vercel
+
+Para que `/register` y `/login` funcionen en produccion, crear un segundo proyecto de Vercel usando el mismo repositorio:
+
+1. Entrar en Vercel y seleccionar **Add New > Project**.
+2. Importar otra vez `jfchoez/genevidence-similarity-check`.
+3. En **Root Directory**, seleccionar `backend`.
+4. Vercel detecta FastAPI desde `backend/index.py`.
+5. No configurar Output Directory.
+6. No agregar Build Command salvo que Vercel lo solicite.
+7. Configurar las variables del backend indicadas abajo.
+8. Desplegar y verificar `/health`.
+9. En **Settings > Domains**, agregar `api-similaritycheck.genevidence.com`.
+10. En Hostinger, crear el CNAME que Vercel indique para `api-similaritycheck`.
+
+El backend necesita una base PostgreSQL externa. No usar SQLite en produccion porque las funciones serverless no tienen disco persistente para la base de datos.
+
+## 4. Variables de entorno del frontend en Vercel
 
 Configurar estas variables para Production, Preview y Development cuando corresponda:
 
@@ -53,32 +69,32 @@ Despues de cambiar una variable `NEXT_PUBLIC_*`, ejecutar un nuevo deployment po
 
 No colocar en Vercel las credenciales privadas del backend si Vercel solo aloja el frontend.
 
-## 4. Variables del backend
+## 5. Variables del backend
 
-Configurar en el proveedor donde se ejecute FastAPI:
+Configurar estas variables en el proyecto Vercel del backend:
 
 | Variable | Proposito |
 | --- | --- |
-| `DATABASE_URL` | PostgreSQL administrado con extension pgvector |
-| `REDIS_URL` | Redis administrado |
+| `DATABASE_URL` | PostgreSQL administrado con extension pgvector. Se aceptan URLs `postgres://`, `postgresql://` y `postgresql+psycopg://` |
+| `REDIS_URL` | Opcional por ahora; reservado para colas/cache |
 | `JWT_SECRET` | Secreto aleatorio largo; nunca exponer al frontend |
 | `JWT_ALGORITHM` | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Duracion de sesion |
 | `MAX_UPLOAD_MB` | Limite de carga |
-| `STORAGE_DIR` | Volumen persistente para documentos |
+| `STORAGE_DIR` | En Vercel puede ser `/tmp/genevidence-storage` solo para pruebas; para produccion documental se requiere storage persistente |
 | `BACKEND_CORS_ORIGINS` | `https://similaritycheck.genevidence.com` |
-| `AUTO_CREATE_TABLES` | `false` despues de aplicar Alembic |
+| `AUTO_CREATE_TABLES` | `true` para el primer despliegue; `false` cuando se gestione con Alembic |
 | `SEMANTIC_ENABLED` | `false` inicialmente; requiere imagen con sentence-transformers |
 
-Antes de iniciar el backend de produccion:
+Para despliegues con Alembic gestionado manualmente:
 
 ```bash
 alembic upgrade head
 ```
 
-El almacenamiento local efimero de un contenedor no es suficiente para documentos. Configurar un volumen persistente o adaptar `STORAGE_DIR` a object storage antes de aceptar archivos reales.
+El almacenamiento local efimero de Vercel no es suficiente para documentos reales. Configurar un volumen persistente o adaptar `STORAGE_DIR` a object storage antes de aceptar archivos academicos reales.
 
-## 5. Conectar el dominio en Vercel
+## 6. Conectar el dominio en Vercel
 
 1. Abrir el proyecto en Vercel.
 2. Ir a **Settings > Domains**.
@@ -86,7 +102,7 @@ El almacenamiento local efimero de un contenedor no es suficiente para documento
 4. Vercel mostrara el registro DNS requerido.
 5. Mantener abierta esa pantalla hasta completar Hostinger.
 
-## 6. Crear el DNS en Hostinger
+## 7. Crear el DNS en Hostinger
 
 1. Abrir Hostinger y entrar a la zona DNS de `genevidence.com`.
 2. Eliminar registros A, AAAA o CNAME existentes que entren en conflicto con `similaritycheck`.
@@ -101,7 +117,7 @@ El almacenamiento local efimero de un contenedor no es suficiente para documento
 
 Vercel emitira y renovara HTTPS automaticamente cuando el DNS sea correcto.
 
-## 7. Verificar SEO tecnico
+## 8. Verificar SEO tecnico
 
 Despues del deployment, abrir:
 
@@ -120,7 +136,7 @@ No debe incluir dashboard, admin, API, documentos ni reportes.
 
 Las rutas privadas usan el Proxy de Next.js, validan la cookie `genevidence_token` contra `GET /auth/me` y responden con `X-Robots-Tag: noindex, nofollow, noarchive`. FastAPI sigue siendo la autoridad final: cada endpoint privado tambien valida el JWT.
 
-## 8. Google Search Console
+## 9. Google Search Console
 
 1. Abrir Google Search Console.
 2. Agregar una propiedad de dominio para `genevidence.com` o una propiedad de prefijo para `https://similaritycheck.genevidence.com`.
@@ -129,7 +145,7 @@ Las rutas privadas usan el Proxy de Next.js, validan la cookie `genevidence_toke
 5. Enviar `https://similaritycheck.genevidence.com/sitemap.xml`.
 6. Confirmar que Google lo procese sin rutas privadas.
 
-## 9. Favicon
+## 10. Favicon
 
 No se encontro un favicon cuadrado dedicado. El logo horizontal se usa para Open Graph. Para agregar favicon, colocar un PNG cuadrado de 512 x 512 en:
 
@@ -146,8 +162,10 @@ Next.js lo publicara automaticamente como icono del sitio.
 - [ ] Root Directory de Vercel configurado como `frontend`.
 - [ ] Variables de entorno configuradas.
 - [ ] Backend HTTPS desplegado y accesible.
-- [ ] PostgreSQL/pgvector, Redis y storage persistente configurados.
+- [ ] PostgreSQL/pgvector configurado para el backend.
+- [ ] Storage persistente definido antes de aceptar documentos reales.
 - [ ] Dominio `similaritycheck.genevidence.com` conectado.
+- [ ] Dominio `api-similaritycheck.genevidence.com` conectado.
 - [ ] HTTPS activo.
 - [x] Dashboard y rutas privadas protegidas en el frontend y mediante JWT en FastAPI.
 - [ ] Sitemap disponible.

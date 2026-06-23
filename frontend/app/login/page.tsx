@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { LogIn } from "lucide-react";
-import { apiUrl, setAuth } from "@/lib/api";
+import { apiConnectionErrorMessage, apiUrl, setAuth } from "@/lib/api";
 import { BrandLogo } from "@/components/BrandLogo";
 
 export default function LoginPage() {
@@ -27,7 +27,7 @@ export default function LoginPage() {
         body
       });
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "No se pudo conectar con el servicio");
+      setError(apiConnectionErrorMessage(requestError));
       return;
     }
     if (!response.ok) {

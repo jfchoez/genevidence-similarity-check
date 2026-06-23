@@ -73,7 +73,9 @@ La app tambien puede crear tablas al arrancar si `AUTO_CREATE_TABLES=true`.
 
 ## Despliegue de produccion
 
-El frontend Next.js esta preparado para Vercel usando `frontend` como Root Directory. FastAPI, PostgreSQL/pgvector, Redis y los documentos requieren infraestructura persistente separada. Consultar [DEPLOYMENT.md](DEPLOYMENT.md) para variables, dominio, DNS Hostinger, robots, sitemap y Google Search Console.
+El frontend Next.js esta preparado para Vercel usando `frontend` como Root Directory. Para que registro y login funcionen en produccion, el backend FastAPI debe desplegarse tambien con una URL HTTPS publica, por ejemplo `https://api-similaritycheck.genevidence.com`.
+
+El backend incluye `backend/index.py` para despliegue como segundo proyecto FastAPI en Vercel usando `backend` como Root Directory. La base de datos debe ser PostgreSQL externa con pgvector. Para documentos reales, configurar storage persistente u object storage antes de aceptar archivos academicos. Consultar [DEPLOYMENT.md](DEPLOYMENT.md) para variables, dominio, DNS Hostinger, robots, sitemap y Google Search Console.
 
 ## Flujo de uso
 

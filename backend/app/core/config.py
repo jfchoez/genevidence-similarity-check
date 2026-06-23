@@ -40,6 +40,15 @@ class Settings(BaseSettings):
 
     FREE_PLAN_CREDITS: int = 3
 
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def normalize_database_url(cls, value: str) -> str:
+        if value.startswith("postgres://"):
+            return f"postgresql+psycopg://{value.removeprefix('postgres://')}"
+        if value.startswith("postgresql://"):
+            return f"postgresql+psycopg://{value.removeprefix('postgresql://')}"
+        return value
+
     @field_validator("BACKEND_CORS_ORIGINS")
     @classmethod
     def parse_cors_origins(cls, value: str | List[str]) -> List[str]:
